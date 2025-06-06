@@ -63,6 +63,23 @@ fn main() {
         }
     }
     let ts_chan = dev.find_input_channel("timestamp").unwrap();
+    let acc_x_chan = dev.find_input_channel("accel_x").unwrap();
+    let acc_y_chan = dev.find_input_channel("accel_y").unwrap();
+    let acc_z_chan = dev.find_input_channel("accel_z").unwrap();
+    let gyr_x_chan = dev.find_input_channel("anglvel_x").unwrap();
+    let gyr_y_chan = dev.find_input_channel("anglvel_y").unwrap();
+    let gyr_z_chan = dev.find_input_channel("anglvel_z").unwrap();
+
+    // acc_x_chan.disable();
+    // acc_y_chan.disable();
+    // acc_z_chan.disable();
+    // gyr_x_chan.disable();
+    // gyr_y_chan.disable();
+    // gyr_z_chan.disable();
+
+    let acc_scale = acc_x_chan.data_format().scale();
+    let gyr_scale = gyr_x_chan.data_format().scale();
+
     dev.set_num_kernel_buffers(8).unwrap();
 
     let mut buffer = dev
@@ -77,50 +94,51 @@ fn main() {
 
     while running.load(Ordering::SeqCst) {
         let _data_size = buffer.refill();
+        // print!("data ready...");
 
         let ts = buffer.channel_iter::<u64>(&ts_chan);
-        let acc_x_chan = dev.find_input_channel("accel_x").unwrap();
-        let acc_y_chan = dev.find_input_channel("accel_y").unwrap();
-        let acc_z_chan = dev.find_input_channel("accel_z").unwrap();
-        let gyr_x_chan = dev.find_input_channel("anglvel_x").unwrap();
-        let gyr_y_chan = dev.find_input_channel("anglvel_y").unwrap();
-        let gyr_z_chan = dev.find_input_channel("anglvel_z").unwrap();
-        let acc_scale = acc_x_chan.data_format().scale();
-        let gyr_scale = gyr_x_chan.data_format().scale();
-
         let (ax, ay, az) = (
             buffer.channel_iter::<i16>(&acc_x_chan),
             buffer.channel_iter::<i16>(&acc_y_chan),
             buffer.channel_iter::<i16>(&acc_z_chan),
         );
-        let acc = itertools::izip!(ax, ay, az).map(move |(x, y, z)| {
-            [
-                *x as f64 * acc_scale,
-                *y as f64 * acc_scale,
-                *z as f64 * acc_scale,
-            ]
-        });
+
+        let acc: Vec<_> = itertools::izip!(ax, ay, az)
+            .map(move |(x, y, z)| {
+                [
+                    *x as f64 * acc_scale,
+                    *y as f64 * acc_scale,
+                    *z as f64 * acc_scale,
+                ]
+            })
+            .collect();
+        // debug reserve
+        // acc.iter().for_each(|x| println!("{:?}", x));
 
         let (gx, gy, gz) = (
             buffer.channel_iter::<i16>(&gyr_x_chan),
             buffer.channel_iter::<i16>(&gyr_y_chan),
             buffer.channel_iter::<i16>(&gyr_z_chan),
         );
-        let gyr = itertools::izip!(gx, gy, gz).map(move |(x, y, z)| {
-            [
-                *x as f64 * gyr_scale,
-                *y as f64 * gyr_scale,
-                *z as f64 * gyr_scale,
-            ]
-        });
+        let gyr: Vec<_> = itertools::izip!(gx, gy, gz)
+            .map(move |(x, y, z)| {
+                [
+                    *x as f64 * gyr_scale,
+                    *y as f64 * gyr_scale,
+                    *z as f64 * gyr_scale,
+                ]
+            })
+            .collect();
+        // debug reserve
+        // gyr.iter().for_each(|x| println!("{:?}", x));
 
-        let imu: Vec<_> = itertools::izip!(ts, acc, gyr).collect();
+        let imu: Vec<_> = itertools::izip!(ts, acc.iter(), gyr.iter()).collect();
         for i in imu {
             let time = DateTime::<Utc>::from(SystemTime::UNIX_EPOCH + Duration::from_nanos(*i.0))
                 .format("%T%.6f");
             // println!("time = {}", time);
             // println!("imu data = {:?}", i);
-            println!("ts = {}, data = {:?} {:?}", time, i.1, i.1)
+            println!("ts = {}, data = {:?} {:?}", time, i.1, i.2);
         }
     }
 
